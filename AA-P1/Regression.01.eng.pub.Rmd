@@ -1,0 +1,540 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+#  Linear Regression
+
+##### Josep Fortiana 2019-10-01
+
+## 1. Simple linear regression: A simulated example
+
+### Generate a simulated dataset for simple linear regression
+
+```{r}
+# More or less arbitrary parameters for the data generation
+
+trueA<-1   
+trueB<-5
+trueSd<-15
+sampleSize<-20 # n = sampleSize 
+```
+
+```{r}
+# Uniformly spread x values in the interval [-n/2,n/2]
+x<-(-(sampleSize-1)/2):((sampleSize-1)/2)
+# y values of the form a + b*x + N(0,trueSd)
+y<-trueA+trueB*x+rnorm(n=sampleSize,mean=0,sd=trueSd)
+```
+
+```{r}
+# Plot data points plus the line used in the generation
+# Note this line is NOT a regression line, which will be computed below
+options(repr.plot.width=4, repr.plot.height=4)
+plot(x,y,pch='+',cex=0.8,col="blue",main="Test data")
+abline(trueA,trueB,lwd=2.5,col="cyan")
+```
+
+### Adjust a least squares linear regression model
+
+```{r}
+lm.1<-lm(y~x)
+options(repr.plot.width=4, repr.plot.height=4)
+plot(x,y,pch='+',cex=0.8,col="blue",main="Test data")
+abline(trueA,trueB,lwd=2.5,col="cyan")
+abline(lm.1,lwd=2.5,col="blue")
+legend("topleft",c("Original line","","Regression line"), lwd=2.5,col=c("cyan","white","blue"),cex=0.6)
+```
+
+### Extract information from the fitted model
+
+```{r}
+print(lm.1)
+summary(lm.1)
+```
+
+### Regression coefficients
+
+```{r}
+Coeff<-coefficients(lm.1)
+Coeff
+a.hat<-Coeff[1]
+b.hat<-Coeff[2]
+#a.hat<-as.numeric(lm.1$coefficients[1])
+#b.hat<-as.numeric(lm.1$coefficients[2])
+round(a.hat,3)
+round(b.hat,3)
+```
+
+## 2. Relevant quantities in a regression
+
+### 1. Total Sum of Squares
+
+```{r}
+# Total sum of squares
+TotalSS<-sum(y^2)
+round(TotalSS,3)
+# Centered data
+y0<-y-mean(y)   
+# Centered total sum of squares
+TotalSS0<-sum(y0^2)        
+round(TotalSS0,3)
+# Total number of degrees of freedom
+n<-length(y)
+Totaldf<-n
+# Total number of degrees of freedom of the centered y
+Totaldf0<-n-1
+Totaldf
+Totaldf0
+```
+
+### 2. Fitted values and Regression Sum of Squares
+
+```{r}
+# Fitted values
+yhat<-fitted.values(lm.1)
+#yhat<-as.numeric(lm.1$fitted.values) # Alternative syntax
+# Centered fitted values
+yhat0<-yhat-mean(yhat)
+# Regression Sum of Squares
+RegSS<-sum(yhat^2)
+round(RegSS,3)
+# Centered Regression Sum if Squares
+RegSS0<-sum(yhat0^2)
+round(RegSS0,3)
+# Number of degrees of freedom of the regression
+Regdf<-2
+# Number of degrees of freedom of the regression (centered)
+Regdf0<-1
+
+Regdf
+Regdf0
+```
+
+Check that `mean(y)` coincides with `mean(yhat)`
+
+### 3. Regression residuals and Residual Sum of Squares
+
+```{r}
+# The regression residuals can be extracted as:
+ytilde<-residuals(lm.1)
+# ytilde<-as.numeric(lm.11$residuals) # Alternative syntax
+# Also: 
+# ytilde<-y-yhat 
+# or
+# ytilde<-y0-yhat0
+#
+# Note that, since both y and yhat have the same mean, regression residuals are centered.
+ResSS<-sum(ytilde^2)
+Resdf<-Totaldf0-Regdf0
+round(ResSS,3)
+Resdf
+```
+
+### 4. [Total Sum of Squares]  =  [Regression Sum of Squares]  +  [Residual Sum of Squares]
+
+```{r}
+# Both with the non-centered and with the centered version
+round(TotalSS-(RegSS+ResSS),10)
+round(TotalSS0-(RegSS0+ResSS),10)
+```
+
+### 5. Regression Coefficient of Determination (Multiple R-squared)
+
+```{r}
+# By definition, with the centered sums of squares
+R2<-RegSS0/TotalSS0
+round(R2,4)
+```
+
+### 6. Adjusted Coefficient of Determination (Adjusted for the number $p$ of predictors)
+
+$$
+    {\bar {R}}^{2}=1-(1-R^{2})\dfrac{n-1}{n-p-1}
+$$
+
+The Adjusted Coefficient of Determination is also equal to:
+
+$$
+    {\displaystyle {\bar {R}}^{2}={1-{SS_{\text{res}}/{\text{df}}_{e} \over SS_{\text{tot}0}/{\text{df}}_{t0}}}}
+$$
+
+```{r}
+p<-1
+R2adj.1<-1-(1-R2)*(n-1)/(n-p-1)
+round(R2adj.1,4)
+R2adj.2<-1-(ResSS/Resdf)/(TotalSS0/Totaldf0)
+round(R2adj.1,4)
+```
+
+### 7. Mean squares and regression F statistic
+
+```{r}
+TotalMeanS0<-TotalSS0/Totaldf0
+RegMeanS0<-RegSS0/Regdf0
+ResMeanS<-ResSS/Resdf    # Remember that residuals are centered (hence there is no need of a "0" here)
+F<-RegMeanS0/ResMeanS
+# The p-value is the probability of obtaining F values larger than the observed one, assuming the null 
+# hypothesis that there is no regression relationship is true.
+p.val<-1-pf(F,df1=Regdf0,df2=Resdf)
+round(TotalMeanS0,3)
+round(RegMeanS0,3)
+round(ResMeanS,3)
+round(F,3)
+round(p.val,10)
+```
+
+The quotient F is a measure of how the Regression Mean Squares exceeds the Residual Mean of Squares. 
+
+When the model is a Gauss-Markov normal regression, this quantity follows a Fisher-Snedecor distributions with degrees of freedom Regdf0 and Resdf. The resulting $p$-value is computed assuming this is true. When it is larger than the standard significance level ($p$-value > 0.05) we conclude the regression model is non-significant.
+
+### 8. The `anova()` function
+
+Displays the Sums of Squares and Mean Squares, decomposed by each individual predictor and residuals contribution (here there is a single predictor `x`).
+
+```{r}
+lm.1.anova<-anova(lm.1)
+lm.1.anova
+# str(lm.1.anova)
+```
+
+### 9. Residual standard error (estimate $\hat{\sigma}$ of the residuals standard deviation)
+
+```{r}
+# Computing from the relevant quantities we have:
+ResSE<-sqrt(ResMeanS)
+round(ResSE,3)
+# Alternatively, from the anova() function output:
+sigma2.hat<-lm.1.anova$Sum[2]/lm.1.anova$Df[2]
+sigma.hat<-sqrt(sigma2.hat)
+round(sigma.hat,3)
+```
+
+### 10. Estimate of the matrix of variances and covariances of  $\hat{a}$ and $\hat{b}$
+
+```{r}
+V<-vcov(lm.1)
+round(V,3)
+# Null out-of-diagonal entries result from the peculiar way x was constructed for this example. 
+# In general one would expect non-null entries.
+```
+
+### 11. Estimates of the standard deviations of the regression coefficients
+
+```{r}
+v<-diag(V)
+sigma2.a<-as.numeric(v[1])
+sigma2.b<-as.numeric(v[2])
+sigma.a<-sqrt(sigma2.a)
+sigma.b<-sqrt(sigma2.b)
+round(sigma.a,4)
+round(sigma.b,4)
+```
+
+### 12. Student's $t$ statistics
+
+They are a standardized measure of how each of the regression coefficients, here $\hat{a}$ and $\hat{b}$, differ from zero.
+
+When data are normal and the the regression model is Gauss-Màrkov these quantities follow a Student's distribution $t(n-p-1)$. 
+
+For each coefficient, the $p$-value is, in principle, used to test the hypotheses:
+
+$$
+\left\{
+\begin{array}{cl}
+    H_{0}: \mskip15mu&\text{The coefficient is null,}\\
+    H_{1}: \mskip15mu&\text{The coefficient is not zero,}
+\end{array}\right.
+$$
+
+In practice, these $p$-valors are taken as a mere hint, a first step to a more precise assessment of the importance of each predictor.
+
+```{r}
+t.a<-as.numeric(a.hat/sigma.a)
+t.b<-as.numeric(b.hat/sigma.b)
+round(t.a,4)
+round(t.b,4)
+p.val.a<-2*pt(-abs(t.a),n-2)
+p.val.b<-2*pt(-abs(t.b),n-2)
+round(p.val.a,8)
+round(p.val.b,12)
+S<-summary(lm.1)
+coefficients(S)
+```
+
+### 13. The regression matrix (or model matrix)
+
+Now we see how the least squares regression is actually computed:
+
+```{r}
+X<-model.matrix(lm.1)
+str(X)
+X
+```
+
+### 14 . Regression coefficients (estimates of)
+
+The regression coefficients vector $\hat{\beta}=\left(\begin{array}{c}\hat{a}\\\hat{b}\end{array}\right)$ is computed as:
+
+$$
+    \hat{\beta}=(X'\cdot X)^{-1}\cdot X' \cdot y
+$$
+
+```{r}
+# Matrix to invert
+Q<-t(X) %*% X
+round(Q,3)
+```
+
+```{r}
+# Compute regression coefficients:
+Q1<-solve(Q)   # inverse matrix
+beta.hat<-Q1 %*%t(X) %*% y
+round(beta.hat,4)
+```
+
+### 15. The hat matrix and the fitted $\hat{y}$ values
+
+The hat matrix for a regression with model matrix $X$ is:
+
+$$
+    H=X\cdot(X'\cdot X)^{-1}\cdot X'.
+$$
+
+It satisfies that:
+
+$$
+    H\cdot y  = X\cdot(X'\cdot X)^{-1}\cdot X'\cdot y= X\cdot(X'\cdot X)^{-1}\cdot X'\cdot y = X\cdot \hat{\beta} = \hat{y}.
+$$
+
+```{r}
+# The hat matrix is the [n,n] matrix:
+H<-X %*% solve(Q)%*%t(X)
+# H is the operator that "puts a hat" on y, giving yhat. 
+```
+
+```{r}
+# Check that indeed this yhat coincides with the one obtained above
+yhat.1<-H %*% y
+round(max(abs(yhat-yhat.1)),15)
+```
+
+Properties of $H$
+
+```{r}
+# The sum of diagonal entries in H (the trace of H) is equal to the rank of X
+sum(diag(H))
+# H is an idempotent matrix. The square of H is equal to H.
+round(max(abs(H %*% H-H)),15)
+#round(H,3)
+```
+
+### 16. Covariances of regression coefficients estimates
+
+The matrix of variances and covariances of the coefficients vector:
+
+$$
+    \hat{\beta}=(X'\cdot X)^{-1}\cdot X' \cdot y
+$$
+
+is computed by:
+
+$$
+    \operatorname{Var}(\hat{\beta})=(X'\cdot X)^{-1}\cdot X'
+       \cdot\operatorname{Var}(y)\cdot X\cdot(X'\cdot X)^{-1}
+$$
+
+If the Gauss-Markov condition holds, then $\operatorname{Var}(y)=\sigma^2\,I$ and the expression above is simplified:
+
+$$
+      \operatorname{Var}(\hat{\beta})=\sigma^2\,(X'\cdot X)^{-1}
+$$
+
+```{r}
+# Compare this V1 with the one obtained above with the vcov() function
+V1<-Q1*sigma2.hat
+V1
+```
+
+## 3. The `Advertising` dataset
+
+Download `Advertising.csv`, from the textbook web page [An Introduction to Statistical Learning with Applications in R (ISLR)](http://www-bcf.usc.edu/~gareth/ISL/data.html). This dataset is used both in lesson 3 in this course and in Chapter 3 of the textbook. In this section we follow the treatment of the `Advertising` dataset from his chapter.
+
+Set the directory where you saved the dataset file as the RStudio working directory.
+
+Read dataset.
+
+Omit the first column, variable `X`, the index of each sample. Anyway it can be recovered by: `row.names(Advertising)`.
+
+```{r}
+Advertising<-read.csv("Advertising.csv")
+Advertising<-Advertising[,-1]
+```
+
+### Pairwise simple linear regressions
+
+Following ISLR, Chapter 3:
+
+Compute simple linear regressions, one for each of the predictors, `TV`, `Radio`, `Newspapers`. 
+
+Plot all three scatterplots, superimposing on them the regression line.
+
+What can be said about goodness-of-fit of these models?
+
+Which variable, of the possible predictors, `TV`, `Radio`, `Newspapers`, is a better predictor of `Sales`?
+
+Compare the goodness of fit of these linear regressions with the k-NN regressions from last lesson.
+
+```{r}
+#
+# Insert your code here
+#
+```
+
+## 4. Multiple regression
+
+```{r}
+Advertising<-read.csv("Advertising.csv")
+Advertising<-Advertising[,-1]
+```
+
+```{r}
+str(Advertising)
+```
+
+```{r}
+plot(Advertising)
+```
+
+```{r}
+cor(Advertising)
+round(cor(Advertising),2)
+round(cor(Advertising),1)
+```
+
+Multiple linear regression of Sales on all three predictors
+
+```{r}
+lm.Advertising.01<-lm(Sales~TV+Radio+Newspaper,data=Advertising)
+summary(lm.Advertising.01)
+anova(lm.Advertising.01)
+```
+
+```{r}
+# Equivalent, alternative, notation
+lm.Advertising.02<-lm(Sales~.,data=Advertising)
+summary(lm.Advertising.02)
+anova(lm.Advertising.02)
+```
+
+## 5. The _Credit_ dataset
+
+```{r}
+#install.packages("ISLR", repos="https://cloud.r-project.org/")
+require(ISLR)
+data(Credit)
+str(Credit)
+```
+
+```{r}
+# See the Credit dataset help file 
+# From the information we see there, we should:
+# 1. Remove the ID from the dataset
+# 2. Check the qualitative predictors are indeed coded as factors
+Credit<-Credit[,-1]
+str(Credit)
+```
+
+```{r}
+# Isolate the quantitative variables from Credit (as in Figure 3.6)
+with(Credit,Credit.Quant<<-data.frame(Balance,Age,Cards,Education, Income,Limit,Rating))
+str(Credit.Quant)
+```
+
+```{r}
+plot(Credit.Quant,pch=19,col="DarkBlue",cex=0.3)
+```
+
+```{r}
+round(cor(Credit.Quant),2)
+```
+
+## 6. Regression with qualitative predictors
+
+### Predicting `Balance` from `Gender`
+
+```{r}
+lm.Credit.Gender<-lm(Balance~Gender,data=Credit)
+summary(lm.Credit.Gender)
+anova(lm.Credit.Gender)
+```
+
+```{r}
+X1<-model.matrix(lm.Credit.Gender)
+```
+
+By default, `lm()` prepares a model matrix for a qualitative predictor entered as a `factor` with $g$ levels, adding $g-1$ columns constructed as follows: it takes one level as the base level and the remaining ones as "treatments" coded with dummy variables, where a $1$ in a given column means that the corresponding treatment is present.
+
+The `contr.*()` functions are internally used to generate these columns. In the above example for the `Credit` data, the two-levels version was used.
+
+```{r}
+contr.treatment(2)
+contr.treatment(3)
+contr.treatment(4)
+```
+
+Other codings are possible. For instance, if one does not want to distinguish one level as base:
+
+```{r}
+contr.sum(2)
+contr.sum(3)
+contr.sum(4)
+```
+
+```{r}
+lm.Credit.Ethnicity<-lm(Balance~Ethnicity,data=Credit)
+summary(lm.Credit.Ethnicity)
+anova(lm.Credit.Ethnicity)
+```
+
+### Interaction terms
+
+```{r}
+lm.Advertising.Radio.TV.1<-lm(Sales~Radio+TV,data=Advertising)
+summary(lm.Advertising.Radio.TV.1)
+anova(lm.Advertising.Radio.TV.1)
+```
+
+```{r}
+lm.Advertising.Radio.TV.2<-lm(Sales~Radio+TV+Radio:TV,,data=Advertising)
+summary(lm.Advertising.Radio.TV.2)
+anova(lm.Advertising.Radio.TV.2)
+```
+
+```{r}
+# Alternative syntax
+lm.Advertising.Radio.TV.3<-lm(Sales~Radio*TV,data=Advertising)
+summary(lm.Advertising.Radio.TV.3)
+anova(lm.Advertising.Radio.TV.3)
+```
+
+Interaction of a quantitative predictor and a qualitative predictor in the `Credit` dataset
+
+```{r}
+lm.Credit.Income.Student.1<-lm(Balance~Income+Student,data=Credit)
+summary(lm.Credit.Income.Student.1)
+anova(lm.Credit.Income.Student.1)
+```
+
+```{r}
+lm.Credit.Income.Student.2<-lm(Balance~Income*Student,data=Credit)
+summary(lm.Credit.Income.Student.2)
+anova(lm.Credit.Income.Student.2)
+```
+
+## 7. The _House prices_ dataset
+
+From Kaggle [House Prices: Advanced Regression Techniques](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/discussion)
+
+```{r}
+```
