@@ -1,0 +1,739 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+# Classification 03
+
+# CART - Classification and regression trees
+
+#### Josep Fortiana 2019-11-05
+
+The `rpart` function (recursive partitioning) in the `rpart` R package implements the _Classification And Regresion Trees (CART)_ algorithm by Breiman and Friedman. Its main features are: (a) It can predict either a numerical response (regression) or a qualitative response (classification), and (b) Ability to deal with both qualitative and numerical predictors. Furthermore, (c) In each CART partition step the optimized quantity is, by default, Gini's impurity index (see [Victor Zhou's blog](https://victorzhou.com/blog/gini-impurity/), instead of the information gain used in the predecessor algorithm ID3, or the $\chi^2$ statistic used in CHAID. The `rpart` implementation includes information gain as an optional parameter, which allows us to simulate ID3, as we see below.
+
+The CART algorithm works by recursively partitioning a `train` data set in successive steps, in each of which according to values of one of the predictor variables, chosen as the one optimizing the impurity index.
+
+Each continuous numerical predictor is treated by sweeping its range and locating an interior point where the impurity index increment resulting from a partition attains an extreme value. The partition is then performed according to the variable for which this extreme value is the best. It is possible that two or more partitions in the resulting hierarchy is done according to the same predictor.
+
+## 1. Classification with _CART_
+
+## 1.1. `synth.tr` and `synth.te` data sets
+
+### Synthetic Classification Problem
+
+#### Description
+
+The `synth.tr` data frame has 250 rows and 3 columns. The `synth.te` data frame has 100 rows and 3 columns. It is intended that `synth.tr` be used from training and `synth.te` for testing.
+
+#### Format
+
+These data frames contains the following columns:
+
+`xs` : x-coordinate
+
+`ys` : y-coordinate
+
+`yc` : class, coded as 0 or 1.
+
+#### Source
+
+Ripley, B.D. (1994),  "Neural networks and related methods for classification (with discussion)". Journal of the Royal Statistical Society series B 56, 409–456.
+
+```{r}
+require(MASS)
+data(synth.tr)
+data(synth.te)
+str(synth.tr)
+str(synth.te)
+```
+
+Cast `yc` as a factor (it is numerically coded 0/1). This is important for `rpart` as it deals with both classification and regression; if not explicitly stated the program has no way to know this response is a label in a classification problem.
+
+```{r}
+synth.tr$yc<-factor(synth.tr$yc)
+synth.te$yc<-factor(synth.te$yc)
+```
+
+ #### Tree construction
+
+```{r}
+#install.packages("rpart",dependencies=TRUE,repos="https://cloud.r-project.org")
+require(rpart)
+```
+
+```{r}
+synth.rpart<-rpart(yc~xs+ys,data=synth.tr)
+```
+
+#### Show the tree
+
+```{r}
+options(repr.plot.width=4,repr.plot.height=4)
+plot(synth.rpart)
+text(synth.rpart,use.n=TRUE,xpd=2,cex=0.6)
+```
+
+```{r}
+#
+# See the help in 'plot.rpart' and 'test.rpart'
+#
+# 'margin' space around tree
+# 'branch' to decie whether to plot a 'square' tree or with not orthogonal branch angles
+options(repr.plot.width=5.5,repr.plot.height=5.5)
+plot(synth.rpart,branch=0.6,margin=0.2,lwd=2)
+# 'splits' to label each partition
+# 'all' to label all nodel (instead of only terminal nodes)
+# 'xpd' to allow extending labels out of the plot rectangle
+# 'cex' scale of labels
+# 'fancy' to put frames around nodes
+# 'fwidth' ,'fheight', scale for frames around nodes
+text(synth.rpart,use.n=TRUE,fancy=TRUE,fwidth=0.4,fheight=0.4,splits=TRUE,cex=0.5,all=TRUE,xpd=2,col="blue")
+```
+
+#### Confusion matrix
+
+```{r}
+synth.rpart.pred<- predict(synth.rpart,synth.te, type = "class")
+synth.rpart.conf<-table(True = synth.te$yc, Pred = synth.rpart.pred)
+synth.rpart.conf
+```
+
+#### Misclassification error estimate
+
+```{r}
+n<-sum(synth.rpart.conf)
+n1<-sum(diag(synth.rpart.conf))
+P.err<-100*(n-n1)/n
+round(P.err,3)
+```
+
+The resulting tree can be modulated by modifying control parameters in `rpart`. This can be done through the `rpart.control()` function. See the help to find about possible parameters to be modified and their default values. For instance:
+
+```{r}
+options(repr.plot.width=5.5,repr.plot.height=5.5)
+control.parms<-rpart.control(minsplit = 10,cp=0.005)
+synth.rpart.2<-rpart(yc~xs+ys,data=synth.tr,control=control.parms)
+plot(synth.rpart.2)
+text(synth.rpart.2,use.n=TRUE,xpd=2,cex=0.6)
+```
+
+#### Confusion matrix
+
+```{r}
+synth.rpart.2.pred<-predict(synth.rpart.2,synth.te,type="class")
+synth.rpart.2.conf<-table(True = synth.te$yc,Pred=synth.rpart.2.pred)
+synth.rpart.2.conf
+```
+
+#### Misclassification error estimate 
+
+```{r}
+n.2<-sum(synth.rpart.2.conf)
+n1.2<-sum(diag(synth.rpart.2.conf))
+P.err.2<-100*(n.2-n1.2)/n
+round(P.err.2,3)
+```
+
+`minsplit` and `cp` are the most relevant parameters. Try with several values of these, and other, parameters, seeing their influence on the missclassification error estimate.
+
+## 1.2. `Titanic` data
+
+### Survival of passengers on the Titanic
+
+#### Description
+
+This data set provides information on the fate of passengers on the fatal maiden voyage of the ocean liner 'Titanic', summarized according to economic status (class), sex, age and survival.
+
+#### Format
+
+In the `datasets` R package, under the `Titanic`, these data appear in an aggregated form, as a table of frequencies. A 4-dimensional array resulting from cross-tabulating $2201$ observations on 4 variables. The variables and their levels are as follows:
+
+    No	Name	  Levels
+    1.	Class:	  "1st", "2nd", "3rd", "Crew",
+    2.	Age:	  "Child", "Adult"
+    3.	Sex:	  "Male", "Female",
+    4.	Survived: "No", "Yes".
+
+For the purpose of the present laboratory you may find it unfolded as a `data.frame` with $2201$ rows, one for each of the $2201$ passengers and crew, in the file `Titanic.data.txt`.
+
+#### Details
+
+The sinking of the Titanic is a famous event, and new books are still being published about it. Many well-known facts—from the proportions of first-class passengers to the ‘women and children first’ policy, and the fact that that policy was not entirely successful in saving the women and children in the third class—are reflected in the survival rates for various classes of passenger.
+
+These data were originally collected by the British Board of Trade in their investigation of the sinking. Note that there is not complete agreement among primary sources as to the exact numbers on board, rescued, or lost.
+
+Due in particular to the very successful film ‘Titanic’, the last years saw a rise in public interest in the Titanic. Very detailed data about the passengers is now available on the Internet, at sites such as [Encyclopedia Titanica](https://www.encyclopedia-titanica.org/).
+
+Source
+Dawson, Robert J. MacG. (1995), The ‘Unusual Episode’ Data Revisited. Journal of Statistics Education, 3. doi: 10.1080/10691898.1995.11910499.
+
+The source provides a data set recording class, sex, age, and survival status for each person on board of the Titanic, and is based on data originally collected by the British Board of Trade and reprinted in:
+
+British Board of Trade (1990), Report on the Loss of the ‘Titanic’ (S.S.). British Board of Trade Inquiry Report (reprint). Gloucester, UK: Allan Sutton Publishing.
+
+```{r}
+Titanic1<-read.table("Titanic.data.txt",header=TRUE)
+str(Titanic1)
+```
+
+```{r}
+#install.packages("rpart",dependencies=TRUE,repos="https://cloud.r-project.org")
+#install.packages("rpart.plot",dependencies=TRUE,repos="https://cloud.r-project.org")
+require(rpart)
+require(rpart.plot)
+```
+
+The following classification uses the `rpart()` function to reproduce the behavior of the `ID3` algorithm. 
+
+Then we try the `prp()`, in the `rpart.plot` package for plots. Here we show only one of the many possible graphics presentation options. RTFM to know them.
+
+```{r}
+options(repr.plot.width=5.5,repr.plot.height=5.5)
+Titanic.ID3<-rpart(Survived~.,data=Titanic1,minsplit=10,parms=list(split="information"))
+prp(Titanic.ID3,type=4,extra=1,col=1:4,tweak=1.2,box.col="Moccasin",cex=0.6)
+```
+
+## 1.3. `SAheart` data
+
+From the `ElemStatLearn` package, `SAheart` is a data frame with $462$ observations on the following $10$ variables.
+
+01. `sbp`: systolic blood pressure.
+
+02. `tobacco`: cumulative tobacco (kg).
+
+03. `ldl`: low density lipoprotein cholesterol.
+
+04. `adiposity`: a numeric vector.
+
+05. `famhist`: family history of heart disease, a factor with levels `Absent`, `Present`.
+
+06. `typea`: type-A behavior.
+
+07. `obesity`: a numeric vector.
+
+08. `alcohol`: current alcohol consumption.
+
+09. `age`: age at onset
+
+10. `chd`: response, coronary heart disease
+
+##### Details
+
+A retrospective sample of males in a heart-disease high-risk region of the Western Cape, South Africa. There are roughly two controls per case of CHD. Many of the CHD positive men have undergone blood pressure reduction treatment and other programs to reduce their risk factors after their CHD event. In some cases the measurements were made after these treatments. These data are taken from a larger dataset, described in Rousseauw et al, 1983, South African Medical Journal.
+
+```{r}
+#install.packages("ElemStatLearn",dependencies=TRUE,repos="https://cloud.r-project.org")
+require(ElemStatLearn)
+data(SAheart)
+str(SAheart)
+```
+
+Cast the response `chd` as a factor (it is numerically coded 0/1). This is important for `rpart()` as it deals with both classification and regression; if not explicitly stated the program has no way to know this response is a label in a classification problem.
+
+```{r}
+SAheart$chd<-factor(SAheart$chd)
+```
+
+Optionally, `famhist` can be cast as a numeric predictor (in the given `data.frame` is a factor). This is not required for prediction trees, as the CART algorithm can directly process factor predictors, but it might be useful to compare results with other prediction methods.
+
+```{r}
+#SAheart$famhist<-as.numeric(SAheart$famhist)
+```
+
+As usual, split the dataset in `train` and `test` subsets.
+
+```{r}
+n<-nrow(SAheart)
+ntrain<-ceiling(0.60*n)
+Itrain<-sample(1:n,ntrain,replace=FALSE)
+n<-nrow(SAheart)
+ntrain<-ceiling(0.60*n)
+Itrain<-sample(1:n,ntrain,replace=FALSE)
+SAheart.train<-SAheart[Itrain,]
+SAheart.test<-SAheart[-Itrain,]
+```
+
+Build a classification tree, compute the predictions for the `test` subset, obtain the confusion matrix and a misclassification error estimate.
+
+```{r}
+#
+#  Insert your code here
+#
+```
+
+## 1.4. `Carseats` data with the `tree` package (from ISLR, lab 8.3, pag. 329)
+
+[Code from the ISLR book](http://faculty.marshall.usc.edu/gareth-james/ISL/Chapter%208%20Lab.txt)
+
+### Sales of Child Car Seats
+
+#### Description
+
+A simulated data set containing sales of child car seats at 400 different stores.
+
+#### Format
+
+A data frame with 400 observations on the following 11 variables.
+
+01. `Sales`: Unit sales (in thousands) at each location
+
+02. `CompPrice`: Price charged by competitor at each location
+
+03. `Income`: Community income level (in thousands of dollars)
+
+04. `Advertising`: Local advertising budget for company at each location (in thousands of dollars)
+
+05. `Population`: Population size in region (in thousands)
+
+06. `Price`: Price company charges for car seats at each site
+
+07. `ShelveLoc`: A factor with levels "Bad", "Good" and "Medium" indicating the quality of the shelving location for the car seats at each site
+
+08. `Age`: Average age of the local population
+
+09. `Education`: Education level at each location
+
+10. `Urban`: A factor with levels "No" and "Yes" to indicate whether the store is in an urban or rural location
+
+11. `US`: A factor with levels "No" and "Yes" to indicate whether the store is in the US or not
+
+#### Source
+
+Simulated data
+
+#### References
+
+James, G., Witten, D., Hastie, T., and Tibshirani, R. (2013) [An Introduction to Statistical Learning with applications in R](www.StatLearning.com), Springer-Verlag, New York
+
+```{r}
+#install.packages("ISLR",dependencies=TRUE,repos="https://cloud.r-project.org")
+require(ISLR)
+data(Carseats)
+str(Carseats)
+```
+
+```{r}
+summary(Carseats$Sales)
+```
+
+Discretize `Sales` into a factor, `High`, with two levels. Truncation value is slightly greater than the median, hence more than half of data are in the "No" class.
+
+```{r}
+High<-ifelse(Carseats$Sales<=8,"No","Yes")
+table(High)
+```
+
+Append the new variable to the `data.frame` (avoid using the original `Sales` variable as a predictor!).
+
+```{r}
+Carseats.D<-data.frame(Carseats[,-1],High)
+str(Carseats.D)
+```
+
+```{r}
+#install.packages("tree",dependencies=TRUE,repos="https://cloud.r-project.org")
+require(tree)
+```
+
+```{r}
+# attach(Carseats) (not necessary to attach())
+# Classification. Response is the new binary variable 'High' 
+# 
+Carseats.D.tree<-tree(High~.,Carseats.D)
+# Alternative method, as in the book.
+# If we did not remove 'Sales' from the dataset then we must discard it explicitly from the set of predictors.
+#Carseats.D.tree<-tree(High~.-Sales,Carseats.D)
+```
+
+The `print()` method for the `tree` class generates a verbose description of nodes and splitting criteria.
+
+```{r}
+print(Carseats.D.tree)
+```
+
+The `summary()` method just a short description.
+
+```{r}
+summary(Carseats.D.tree)
+```
+
+The default `plot()` method. Actually it calls `plot.tree()`
+
+```{r}
+options(repr.plot.width=6.5,repr.plot.height=6.5)
+plot(Carseats.D.tree)
+text(Carseats.D.tree,pretty=0,cex=0.5,col="blue")
+```
+
+See the `proportional` key word in the help for `plot.tree()`.
+
+```{r}
+options(repr.plot.width=6.5,repr.plot.height=6.5)
+plot(Carseats.D.tree,type='proportional')
+text(Carseats.D.tree,pretty=0,cex=0.5,col="blue")
+```
+
+### Cross-validation to assess misclassification errors
+
+```{r}
+# 'Hold-out' cross-validation 
+set.seed(2)
+n<-nrow(Carseats.D)
+n.train<-floor(0.5*n)
+n.test<-n-n.train
+I.train<-sample(1:n, n.train)
+Carseats.D.test<-Carseats.D[-I.train,]
+High.test<-High[-I.train]
+```
+
+Confusion matrix
+
+```{r}
+#Carseats.D.tree=tree(High~.-Sales,Carseats.D,subset=I.train)
+Carseats.D.tree=tree(High~.,Carseats.D,subset=I.train)
+Carseats.D.pred=predict(Carseats.D.tree,Carseats.D.test,type="class")
+Carseats.D.conf<-table(Carseats.D.pred,High.test)
+Carseats.D.conf
+P.err<-(n.test-sum(diag(Carseats.D.conf)))/n.test
+paste("Misclassification error estimate = ", round(P.err,3))
+```
+
+### Pruning to avoid overfitting
+
+#### Using the hardwired `cv.tree()` function to prune the obtained tree.
+
+```{r}
+set.seed(3)
+Carseats.D.tree.CV=cv.tree(Carseats.D.tree,FUN=prune.misclass)
+names(Carseats.D.tree.CV)
+Carseats.D.tree.CV
+```
+
+```{r}
+par(mfrow=c(1,2))
+plot(Carseats.D.tree.CV$size,Carseats.D.tree.CV$dev,type="b")
+plot(Carseats.D.tree.CV$k,Carseats.D.tree.CV$dev,type="b")
+prune.carseats=prune.misclass(Carseats.D.tree,best=9)
+plot(prune.carseats)
+text(prune.carseats,pretty=0,cex=0.6)
+```
+
+```{r}
+Carseats.D.pred=predict(prune.carseats,Carseats.D.test,type="class")
+table(Carseats.D.pred,High.test)
+#(94+60)/200
+```
+
+```{r}
+prune.carseats=prune.misclass(Carseats.D.tree,best=15)
+plot(prune.carseats)
+text(prune.carseats,pretty=0,cex=0.7)
+```
+
+```{r}
+Carseats.D.pred=predict(prune.carseats,Carseats.D.test,type="class")
+table(Carseats.D.pred,High.test)
+#(86+62)/200
+```
+
+```{r}
+```
+
+# 2. Regression with CART
+
+## 2.0. Visualizing regression trees
+
+Observe that in regression problems prediction functions are locally constant functions (step functions).
+
+### Regression with a single continuous predictor
+
+```{r}
+#install.packages("rpart",dependencies=TRUE,repos="https://cloud.r-project.org")
+require(rpart)
+```
+
+### Training set: a collection of  $(x,y)$ pairs of values, coordinates of points on a parabola
+
+```{r}
+x<-seq(-3,3,by=0.1)
+n<-length(x)
+y<-x^2
+options(repr.plot.width=4,repr.plot.height=4)
+old.par<-par(cex.axis=0.6,cex.lab=0.7)
+plot(x,y, "l",lwd=2,col="blue")
+par(old.par)
+```
+
+### Build and show the tree
+
+```{r}
+r<-rpart(y~x)
+options(repr.plot.width=4,repr.plot.height=4)
+plot(r,branch=0.5)
+text(r,use.n=TRUE,xpd=2,cex=0.6, col="blue")
+```
+
+### Stepwise prediction function superimposed to training set
+
+```{r}
+yp<-predict(r,newdata=data.frame(x))
+options(repr.plot.width=4,repr.plot.height=4)
+old.par<-par(cex.axis=0.6,cex.lab=0.7)
+plot(x,y, "l",lwd=2,col="blue")
+lines(x,yp,lwd=2,col="red")
+par(old.par)
+```
+
+### Regression with two continuous numerical predictors
+
+```{r}
+## Run this code chunk directly in RStudio. Dynamical graphics do not work well within a Jupyter notebook
+#install.packages("tcltk",dependencies=TRUE,repos="https://cloud.r-project.org")
+#install.packages("tkrgl",dependencies=TRUE,repos="https://cloud.r-project.org")
+#install.packages("tkrplot",dependencies=TRUE,repos="https://cloud.r-project.org")
+#install.packages("TeachingDemos",dependencies=TRUE,repos="https://cloud.r-project.org")
+require(tcltk)
+require(tkrgl)
+require(tkrplot)
+require(TeachingDemos)
+```
+
+### A training set, a collection of pairs (2-dim predictor: `(x,y)`, response: `fxy.m`)
+
+```{r}
+xy<-expand.grid(x,x)
+fxy.v<-(1/2*pi)*exp(-0.5*(xy[,1]^2+xy[,2]^2))
+fxy.m<-matrix(fxy.v,nrow=length(x))
+```
+
+```{r}
+## Run this code chunk directly in RStudio. Dynamical graphics do not work well within a Jupyter notebook
+#rotate.persp(x,x,fxy.m)
+#z<-fxy.v
+```
+
+### Build and show the tree
+
+```{r}
+xy.rpart<-rpart(fxy.v~xy[,1]+xy[,2])
+options(repr.plot.width=5,repr.plot.height=5)
+plot(xy.rpart)
+text(xy.rpart,use.n=TRUE,xpd=2,cex=0.5)
+```
+
+### Show the prediction function
+
+```{r}
+## Run this code chunk directly in RStudio. Dynamical graphics do not work well within a Jupyter notebook
+#xy.pred<-predict(xy.rpart,newdata=data.frame(xy))
+#xy.pred.m<-matrix(xy.pred,nrow=length(x))
+#rotate.persp(x,y,xy.pred.m)
+```
+
+## 2.1.  `Boston` data (from `MASS`)  with the `tree` package (from ISLR, lab 8.3.2, pag. 332)
+
+[Code from the ISLR book](http://faculty.marshall.usc.edu/gareth-james/ISL/Chapter%208%20Lab.txt)
+
+## Housing Values in Suburbs of Boston
+
+### Description
+
+The Boston data frame has 506 rows and 14 columns.
+
+### Format
+
+The Boston data frame has 506 rows and 14 columns (predictors). We have descriptions and summaries of predictors as follows:
+
+01. `crim`: per capita crime rate by town.
+
+02. `zn`: proportion of residential land zoned for lots over 25,000 sq.ft.
+
+03. `indus`: proportion of non-retail business acres per town.
+
+04. `chas`: Charles River dummy variable (= 1 if tract bounds river; 0 otherwise).
+
+05. `nox`: nitrogen oxides concentration (parts per 10 million).
+
+06. `rm`: average number of rooms per dwelling.
+
+07. `age`: proportion of owner-occupied units built prior to 1940.
+
+08. `dis`: weighted mean of distances to five Boston employment centres.
+
+09. `rad`: index of accessibility to radial highways.
+
+10. `tax`: full-value property-tax rate per $10,000.
+
+11. `ptratio`: pupil-teacher ratio by town.
+
+12. `black`: 1000(Bk - 0.63)^2 where Bk is the proportion of blacks by town.
+
+13. `lstat`: lower status of the population (percent).
+
+14. `medv`: median value of owner-occupied homes in $1000s.
+
+```{r}
+require(MASS)
+data(Boston)
+str(Boston)
+```
+
+```{r}
+set.seed(1)
+train = sample(1:nrow(Boston), nrow(Boston)/2)
+```
+
+```{r}
+tree.boston=tree(medv~.,Boston,subset=train)
+summary(tree.boston)
+```
+
+```{r}
+options(repr.plot.width=5,repr.plot.height=5)
+plot(tree.boston)
+text(tree.boston,pretty=0)
+```
+
+```{r}
+cv.boston=cv.tree(tree.boston)
+```
+
+```{r}
+plot(cv.boston$size,cv.boston$dev,type='b')
+```
+
+### Pruning to avoid overfitting
+
+```{r}
+prune.boston=prune.tree(tree.boston,best=5)
+```
+
+```{r}
+plot(prune.boston)
+text(prune.boston,pretty=0)
+yhat=predict(tree.boston,newdata=Boston[-train,])
+```
+
+```{r}
+boston.test=Boston[-train,"medv"]
+plot(yhat,boston.test)
+abline(0,1)
+```
+
+```{r}
+mean((yhat-boston.test)^2)
+```
+
+## 2.2. `cpus` data (from `MASS`)
+
+## Performance of Computer CPUs
+
+### Description
+
+A relative performance measure and characteristics of 209 CPUs.
+
+### Format
+
+The components are:
+
+01. `name`: manufacturer and model.
+
+02. `syct`: cycle time in nanoseconds.
+
+03. `mmin`: minimum main memory in kilobytes.
+
+04. `mmax`: maximum main memory in kilobytes.
+
+05. `cach`: cache size in kilobytes.
+
+06. `chmin`: minimum number of channels.
+
+07. `chmax`: maximum number of channels.
+
+08. `perf`: published performance on a benchmark mix relative to an IBM 370/158-3.
+
+09. `estperf`: estimated performance (by Ein-Dor & Feldmesser).
+
+### Source
+
+P. Ein-Dor and J. Feldmesser (1987), _Attributes of the performance of central processing units: a relative performance prediction model._ Comm. ACM. 30, 308–317.
+
+### References
+
+Venables, W. N. and Ripley, B. D. (2002) Modern Applied Statistics with S. Fourth edition. Springer.
+
+```{r}
+require(MASS)
+data(cpus)
+str(cpus)
+```
+
+Discard the first variable, the brand label. 
+
+If desired this list of brand labels can be saved as an auxiliary vector, to be used in plots.
+
+We also discard the last (ninth) variable, an estimate of the response variable by the authors of the original paper.l:
+
+```{r}
+labels<-cpus[,1]
+cpus<-cpus[,2:8] 
+rownames(cpus)<-as.character(labels)
+str(cpus)
+```
+
+Prepare a new `data.frame` with the logarithmic transform of the response:
+
+```{r}
+logcpus<-cpus[,1:6]
+logcpus$logperf<-log10(cpus$perf)
+str(logcpus)
+```
+
+```{r}
+#install.packages("rpart",dependencies=TRUE,repos="https://cloud.r-project.org")
+require(rpart)
+```
+
+```{r}
+logcpus.rpart.01<-rpart(logperf~.,data=logcpus,cp=1.0e-3)
+```
+
+```{r}
+print(logcpus.rpart.01)
+```
+
+```{r}
+options(repr.plot.width=5,repr.plot.height=5)
+plot(logcpus.rpart.01,uniform=TRUE)
+text(logcpus.rpart.01,digits=3,cex=0.6)
+```
+
+### Pruning to avoid overfitting
+
+#### Print values of the complexity parameter `cp`
+
+```{r}
+printcp(logcpus.rpart.01)
+```
+
+```{r}
+plotcp(logcpus.rpart.01,cex.axis=0.6)
+```
+
+```{r}
+print(logcpus.rpart.01,cp=0.006,digits=3)
+```
+
+```{r}
+logcpus.rpart.02<-prune(logcpus.rpart.01,cp=0.006)
+```
+
+```{r}
+plot(logcpus.rpart.02,branch=0.4,uniform=TRUE)
+text(logcpus.rpart.02,digits=3,cex=0.6)
+```
+
+```{r}
+plot(logcpus.rpart.02,branch=0.6,compress=TRUE,uniform=TRUE)
+text(logcpus.rpart.02,digits=3,all=TRUE,use.n=TRUE,cex=0.6)
+```
